@@ -1,0 +1,97 @@
+package com.sm.jeyz9.storemateapi.controllers;
+
+import com.sm.jeyz9.storemateapi.dto.CheckoutNowRequestDTO;
+import com.sm.jeyz9.storemateapi.dto.CheckoutRequestDTO;
+import com.sm.jeyz9.storemateapi.dto.RefundRequestDTO;
+import com.sm.jeyz9.storemateapi.dto.ReorderRequestDTO;
+import com.sm.jeyz9.storemateapi.dto.RetryPaymentRequestDTO;
+import com.sm.jeyz9.storemateapi.dto.RetryPaymentResponseDTO;
+import com.sm.jeyz9.storemateapi.services.PaymentService;
+import com.stripe.model.Event;
+import com.stripe.net.Webhook;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.nio.charset.StandardCharsets;
+import java.security.Principal;
+import java.util.Map;
+
+@RestController
+@RequestMapping(value = "/api/v1")
+public class PaymentController {
+    private final PaymentService paymentService;
+
+    @Value("${stripe.webhook-secret}")
+    private String endpointSecret;
+
+    @Autowired
+    public PaymentController(PaymentService paymentService) {
+        this.paymentService = paymentService;
+    }
+
+    @PostMapping("/orders/payments/intent")
+    public ResponseEntity<Map<String, String>> checkoutIntent(@RequestBody CheckoutRequestDTO request, Principal principal) {
+        return new ResponseEntity<>(paymentService.checkoutIntent(principal.getName(), request), HttpStatus.CREATED);
+    }
+    
+    @PostMapping("/orders/payments/now")
+    public ResponseEntity<Map<String, String>> checkoutNow(@RequestBody CheckoutNowRequestDTO request, Principal principal) {
+        return new ResponseEntity<>(paymentService.checkoutNow(principal.getName(), request), HttpStatus.CREATED);
+    }
+    
+    @PostMapping("/payment/refund-request/send")
+    public ResponseEntity<String> sendRefund(@RequestBody @Valid RefundRequestDTO request, Principal principal) {
+        return new ResponseEntity<>(paymentService.sendRefundRequest(request, principal.getName()), HttpStatus.CREATED);
+    }
+    
+    @GetMapping("/payment/refund-request/{refundNo}/approve")
+    public ResponseEntity<String> refundApprove(@PathVariable("refundNo") String refundNo) {
+        return new ResponseEntity<>(paymentService.refundApprove(refundNo), HttpStatus.OK);
+    }
+
+    @GetMapping("/payment/refund-request/{refundNo}/reject")
+    public ResponseEntity<String> refundReject(@PathVariable("refundNo") String refundNo){
+        return new ResponseEntity<>(paymentService.refundReject(refundNo), HttpStatus.OK);
+    }
+    
+    @PostMapping("/stripe/webhook")
+    public ResponseEntity<String> handleStripeWebhook(HttpServletRequest request) {
+        String payload;
+        try{
+            payload = new String(request.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        }catch (Exception e) {
+            return ResponseEntity.badRequest().body("Invalid payload");
+        }
+        
+        String sigHeader = request.getHeader("Stripe-Signature");
+        try {
+            Event event = Webhook.constructEvent(payload, sigHeader, endpointSecret);
+            
+            paymentService.handleStripeWebhook(event);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Invalid signature");
+        }
+        return new ResponseEntity<>("received", HttpStatus.CREATED);
+    }
+
+    @PostMapping("/retry")
+    public ResponseEntity<RetryPaymentResponseDTO> retryPayment(
+            @RequestBody RetryPaymentRequestDTO request) throws Exception {
+        return new ResponseEntity<>(paymentService.retryPayment(request), HttpStatus.CREATED);
+    }
+    
+    @PostMapping("/payment/reorder")
+    public ResponseEntity<Map<String, String>> reorder(@RequestBody ReorderRequestDTO request, Principal principal){
+        return new ResponseEntity<>(paymentService.reorder(request, principal.getName()), HttpStatus.CREATED);
+    }
+}

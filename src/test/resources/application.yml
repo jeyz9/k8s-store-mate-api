@@ -1,0 +1,42 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+  
+  flyway:
+    enabled: false
+
+jwt-secret: test-secret
+jwt-expiration: 60000
+
+front_end_url: "test"
+thaibulksms:
+  key: "test"
+  secret: "test"
+  send_url: "test"
+  email_sender: "test"
+  reset_password_template_uuid: "test"
+
+supabase:
+  url: "test"
+  key: "test"
+  bucket:
+    product: "test"
+    user: "test"
+    store: "test"
+    
+stripe:
+  secret-key: "test"
+  webhook-secret: "test"
+
+line:
+  channel:
+    secret: "test"
+    token: "test"

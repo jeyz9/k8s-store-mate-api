@@ -1,0 +1,157 @@
+package com.sm.jeyz9.storemateapi.controllers;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sm.jeyz9.storemateapi.dto.UserAddressDTO;
+import com.sm.jeyz9.storemateapi.dto.UserAddressRequestDTO;
+import com.sm.jeyz9.storemateapi.dto.UserProfileDTO;
+import com.sm.jeyz9.storemateapi.dto.UserProfileRequestDTO;
+import com.sm.jeyz9.storemateapi.services.UserProfileService;
+import io.swagger.v3.oas.annotations.Operation;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.security.Principal;
+import java.util.List;
+import java.util.Map;
+
+@RestController
+@RequestMapping("/api/v1/users/me")
+@RequiredArgsConstructor
+public class UserProfileController {
+
+    private final UserProfileService userProfileService;
+
+    @Operation(summary = "ดูหน้าโปรไฟล์ผู้ใช้")
+    @GetMapping("/overview")
+    public ResponseEntity<UserProfileDTO> getMyProfile(Principal principal) {
+        return ResponseEntity.ok(userProfileService.getUserProfile(principal.getName()));
+    }
+
+    @Operation(summary = "แก้ไขโปรไฟล์ผู้ใช้", description = """
+                    ใช้สำหรับอัปเดตข้อมูลส่วนตัวของผู้ใช้งาน พร้อมรองรับการอัปโหลดรูปภาพโปรไฟล์ 1 ภาพ
+                    (ส่งเฉพาะฟิลด์ที่ต้องการเปลี่ยนแปลง ระบบจะคงค่าเดิมไว้หากฟิลด์นั้นเป็น null)
+                   
+                    ตัวอย่าง Request:
+                    {
+                      "name": "ชื่อ ใหม่",
+                      "email": "test12345@example.com",
+                      "phone": "0812345678"
+                    }
+                    
+                    หรือจะเปลี่ยนแบงเป็นตัวๆ ได้
+                    {
+                    "name": "ชื่อ ใหม่"
+                    }
+                    
+                    เงื่อนไขการอัปเดต:
+                    - email: ต้องไม่ซ้ำกับคนอื่นในระบบ
+                    - phone: ต้องไม่ซ้ำกับคนอื่นในระบบ
+                    - image: ให้ใส่ไฟล์ภาพรับไฟล์ภาพ
+           """
+    )
+    @PutMapping(value = "/overview", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<String> updateMyProfile(
+            @RequestPart(value = "data", required = false) String requestJson,
+            @RequestPart(value = "image", required = false) MultipartFile image,
+            Principal principal) throws JsonProcessingException { 
+
+        ObjectMapper mapper = new ObjectMapper();
+        UserProfileRequestDTO request = (requestJson != null)
+                ? mapper.readValue(requestJson, UserProfileRequestDTO.class)
+                : new UserProfileRequestDTO();
+
+        return ResponseEntity.ok(userProfileService.updateProfile(principal.getName(), request, image));
+    }
+    
+    
+    @Operation(summary = "เพิ่มที่อยู่ใหม่")
+    @PostMapping("/addresses")
+    public ResponseEntity<UserAddressDTO> addUserAddress(
+            @RequestBody UserAddressRequestDTO dto,
+            Principal principal) {
+        UserAddressDTO newAddress = userProfileService.addUserAddress(principal.getName(), dto);
+        return new ResponseEntity<>(newAddress, HttpStatus.CREATED);
+    }
+
+    @Operation(summary = "ดึงรายการที่อยู่ทั้งหมดของผู้ใช้")
+    @GetMapping("/addresses")
+    public ResponseEntity<List<UserAddressDTO>> getMyAddresses(Principal principal) {
+        return ResponseEntity.ok(userProfileService.getUserAddresses(principal.getName()));
+    }
+
+    @Operation(summary = "ดึงข้อมูลที่อยู่ตาม ID")
+    @GetMapping("/addresses/{id}")
+    public ResponseEntity<UserAddressDTO> getAddressById(
+            @PathVariable Long id,
+            Principal principal) {
+        return ResponseEntity.ok(userProfileService.getUserAddressById(id, principal.getName()));
+    }
+
+    @Operation(summary = "ดึงที่อยู่เริ่มต้น (Default Address)")
+    @GetMapping("/addresses/default")
+    public ResponseEntity<UserAddressDTO> getDefaultAddress(Principal principal) {
+        return ResponseEntity.ok(userProfileService.getDefaultAddress(principal.getName()));
+    }
+    
+
+    @Operation(summary = "ลบที่อยู่ผู้ใช้งาน")
+    @DeleteMapping("/addresses/{id}")
+    public ResponseEntity<Map<String, String>> deleteAddress(
+            @PathVariable Long id,
+            Principal principal) {
+        userProfileService.deleteUserAddress(id, principal.getName());
+        return ResponseEntity.ok(Map.of("message", "ลบที่อยู่สำเร็จ"));
+    }
+
+    @Operation(summary = "แก้ไขที่อยู่ผู้ใช้งาน")
+    @PutMapping("/addresses/{id}")
+    public ResponseEntity<UserAddressDTO> updateAddress(
+            @PathVariable Long id,
+            @RequestBody UserAddressRequestDTO dto,
+            Principal principal) {
+
+        UserAddressDTO updated = userProfileService.updateUserAddress(id, dto, principal.getName());
+        return ResponseEntity.ok(updated);
+    }
+    @Operation(summary = "ตั้งค่าที่อยู่เป็นค่าเริ่มต้น")
+    @PatchMapping("/addresses/{id}")
+    public ResponseEntity<UserAddressDTO> setDefaultAddress(
+            @PathVariable Long id,
+            Principal principal) {
+        UserAddressDTO updated = userProfileService.setDefaultAddress(id, principal.getName());
+        return ResponseEntity.ok(updated);
+    }
+
+
+    @Operation(
+            summary = "ดึงข้อมูลที่อยู่แบบลำดับขั้น",
+            description = """
+                        ใช้ดึงข้อมูล จังหวัด -> อำเภอ -> ตำบล -> รหัสไปรษณีย์
+                        ถ้าไม่ใส id อะไรไปจะได้จังหวัดทั้งหมด 
+                        แล้วเอา id ที่ได้มาไป search ต่อเรียงไป
+                    """
+    )
+    @GetMapping("/address-dropdown")
+    public ResponseEntity<Object> getAddressDropdown(
+            @RequestParam(required = false) Long provinceId,
+            @RequestParam(required = false) Long districtId,
+            @RequestParam(required = false) Long subdistrictId) {
+
+        Object addresses = userProfileService.getAddress(provinceId, districtId, subdistrictId);
+
+        return ResponseEntity.ok(addresses);
+    }
+
+    @Operation(summary = "ลบรูปโปรไฟล์")
+    @DeleteMapping("/profile-image")
+    public ResponseEntity<String> deleteMyProfileImage(Principal principal) {
+        String message = userProfileService.deleteProfileImage(principal.getName());
+        return ResponseEntity.ok(message);
+    }
+    
+}
